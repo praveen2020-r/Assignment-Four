@@ -1,0 +1,129 @@
+---
+title: "Assign4"
+author: "Praveen"
+date: "5/8/2021"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+
+
+
+```{r setup, include=FALSE}
+knitr.duplicate.label = "allow"
+knitr::opts_chunk$set(echo = TRUE)
+packages = c("tidyverse", "RCurl", "psych", "stats", 
+             "randomForest", "glmnet", "caret","kernlab", 
+             "rpart", "rpart.plot", "neuralnet", "C50",
+             "doParallel", "AUC", "ggfortify")
+if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
+  install.packages(setdiff(packages, rownames(installed.packages())))  
+}
+invisible(lapply(packages, require, character.only = TRUE))
+
+```
+
+Data Set Information:
+
+The two datasets are related to red and white variants of the Portuguese "Vinho Verde" wine. For more details, consult: [Web Link] or the reference [Cortez et al., 2009]. Due to privacy and logistic issues, only physicochemical (inputs) and sensory (the output) variables are available (e.g. there is no data about grape types, wine brand, wine selling price, etc.).
+
+These datasets can be viewed as classification or regression tasks. The classes are ordered and not balanced (e.g. there are many more normal wines than excellent or poor ones). Outlier detection algorithms could be used to detect the few excellent or poor wines. Also, we are not sure if all input variables are relevant. So it could be interesting to test feature selection methods.
+
+
+Attribute Information:
+
+For more information, read [Cortez et al., 2009].
+Input variables (based on physicochemical tests):
+1 - fixed acidity
+2 - volatile acidity
+3 - citric acid
+4 - residual sugar
+5 - chlorides
+6 - free sulfur dioxide
+7 - total sulfur dioxide
+8 - density
+9 - pH
+10 - sulphates
+11 - alcohol
+Output variable (based on sensory data):
+12 - quality (score between 0 and 10)
+
+
+The research was about finding the quality of wine?
+
+The file got stored is CSV format.It is delimited and Comma-separated values the file is binary opned by Ms excel program in general.
+
+```{r }
+data <- read.csv("winequality-white.csv",header = T, sep = ";")
+n = nrow(data); p = ncol(data); dim(data)
+```
+
+
+```{r }
+any(is.na(data))
+```
+
+
+
+
+```{r }
+library(psych)
+summary(data)
+```
+
+It seems that the dataset is very clean, with no missing data and clear structure. All variables are numeric. The range of independent variables varies greatly, so when building the model I will normalize them to be within the same range.
+
+
+```{r }
+colnames(data)
+```
+
+
+
+I will split the dataset into a training and testing set, and normalize each set separately.
+```{r }
+set.seed(1)
+idx = sample(n, 0.9*n)
+train = data[idx,]; dim(train)
+test = data[-idx,]; dim(test)
+```
+
+```{r }
+# normalize train set so that the range is 0 ~ 1
+normalize_train = function(x) (x - min(x))/(max(x) - min(x))
+train.norm = data.frame(apply(train[,-p], 2, normalize_train), 
+                        quality = train[,p])
+summary(train.norm)
+```
+
+```{r }
+# normalize test set using the values from train set to make prediction comparable
+train.min = apply(train[,-p], 2, min)
+train.max = apply(train[,-p], 2, max)
+test.norm = data.frame(sweep(test, 2, c(train.min, 0)) %>% 
+                         sweep(2, c(train.max-train.min, 1), FUN = "/"))
+summary(test.norm) # test.norm might have data out of range 0~1, since it's normalized against the training set.
+
+```
+
+```{r }
+hist(data$quality)
+```
+
+
+```{r }
+shapiro.test(data$quality) #Didn't pass normality test, so linear model may have a problem
+```
+
+The dependent variable doesn’t pass the normality test, so one assumption of linear regression is not met. In addition, as we see from the pairwise plot, the relationship among independent variables and dependent variables are not entirely linear. There is also some collinearity among independent variables. Any of those could sabotage the performance of the linear model.
+
+Then I will apply this linear model to the test set, and visualize the predicted value against the true value. I will also evaluate the model performance based on 3 measures: RMSE (root mean square error), MAE (mean absolute error) and cor (correlation). Smaller RMSE, MAE and larger cor are indicators of a good prediction.
+
+
+```{r }
+tr.lm = lm(quality~., data = train.norm)
+summary(tr.lm)
+```
+
